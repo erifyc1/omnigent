@@ -17,6 +17,7 @@ struct WebShellView: View {
   @EnvironmentObject private var router: AppRouter
   @EnvironmentObject private var managedConfiguration: ManagedConfigurationProvider
   @StateObject private var model = WebViewModel()
+  @ObservedObject private var theme = ThemeController.shared
   /// A deep-link path that arrived while the page was still loading — emitted
   /// to the SPA once `isLoading` flips false, so a cold-start / mid-load deep
   /// link to the current server isn't lost (its `onOpenPath` subscriber isn't
@@ -108,7 +109,7 @@ struct WebShellView: View {
       }
       .animation(.easeInOut(duration: 0.16), value: model.serverSwitcherHidden)
       .ignoresSafeArea(.keyboard)
-      .background(DesignTokens.background(colorScheme).ignoresSafeArea())
+      .background(Color(uiColor: theme.background).ignoresSafeArea())
       .overlay(alignment: .bottom) {
         // Always present, shown/hidden by opacity rather than insert/remove, so
         // a transient visibility flip never slides the bar in and out. The web

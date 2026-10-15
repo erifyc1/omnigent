@@ -54,6 +54,29 @@ final class ThemeBackgroundTests: XCTestCase {
     }
   }
 
+  func testPageBackgroundColorsTheWindowButNotOverlays() {
+    let page = UIColor(red: 40 / 255, green: 42 / 255, blue: 54 / 255, alpha: 1)
+    let window = makeWindow()
+    ThemeController.apply(.dark, background: page, to: window)
+    XCTAssertEqual(window.backgroundColor, page)
+    XCTAssertEqual(window.rootViewController?.view.backgroundColor, page)
+
+    let overlay = makeWindow()
+    overlay.windowLevel = UIWindow.Level(rawValue: UIWindow.Level.normal.rawValue + 1)
+    overlay.backgroundColor = .clear
+    ThemeController.apply(.dark, background: page, to: overlay)
+    XCTAssertEqual(overlay.backgroundColor, .clear)
+  }
+
+  func testPageBackgroundPayloadRequiresThreeByteChannels() {
+    XCTAssertEqual(
+      ThemeController.pageBackground(from: ["red": 14, "green": 16, "blue": 19]),
+      UIColor(red: 14 / 255, green: 16 / 255, blue: 19 / 255, alpha: 1))
+    XCTAssertNil(ThemeController.pageBackground(from: ["red": 14, "green": 16]))
+    XCTAssertNil(ThemeController.pageBackground(from: ["red": 14, "green": 16, "blue": 300]))
+    XCTAssertNil(ThemeController.pageBackground(from: ["red": "14", "green": 16, "blue": 19]))
+  }
+
   private func makeWindow() -> UIWindow {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
     window.rootViewController = UIHostingController(rootView: Color.clear)

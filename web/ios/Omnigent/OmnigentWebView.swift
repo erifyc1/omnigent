@@ -111,6 +111,7 @@ struct OmnigentWebView: UIViewRepresentable {
   static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
     uiView.configuration.userContentController.removeScriptMessageHandler(forName: "omnigentNative")
     coordinator.detach()
+    ThemeController.shared.setPageBackground(nil)
   }
 
   static func nativeBridgeScript(managesWorkspace: Bool) -> String {
@@ -403,6 +404,61 @@ struct OmnigentWebView: UIViewRepresentable {
       window.webkit.messageHandlers.omnigentNative.postMessage({
         method: "requestKeyboardViewport",
       });
+      // Report the page's opaque background so the native layers showing through
+      // the transparent WebView (around the keyboard) match the active theme.
+      const swatch = document
+        .createElement("canvas")
+        .getContext("2d", { willReadFrequently: true });
+      let reportedBackground = "";
+      const pageBackground = () => {
+        for (const element of [document.body, document.documentElement]) {
+          if (!element || !swatch) continue;
+          swatch.clearRect(0, 0, 1, 1);
+          swatch.fillStyle = "transparent";
+          swatch.fillStyle = getComputedStyle(element).backgroundColor;
+          swatch.fillRect(0, 0, 1, 1);
+          const [red, green, blue, alpha] = swatch.getImageData(0, 0, 1, 1).data;
+          if (alpha === 255) return { red, green, blue };
+        }
+        return null;
+      };
+      const reportPageBackground = () => {
+        const color = pageBackground();
+        const key = color ? `${color.red},${color.green},${color.blue}` : "";
+        if (!color || key === reportedBackground) return;
+        reportedBackground = key;
+        window.webkit.messageHandlers.omnigentNative.postMessage({
+          method: "setPageBackground",
+          ...color,
+        });
+      };
+      let pageBackgroundFrame = 0;
+      const schedulePageBackground = () => {
+        if (pageBackgroundFrame) return;
+        pageBackgroundFrame = requestAnimationFrame(() => {
+          pageBackgroundFrame = 0;
+          reportPageBackground();
+        });
+      };
+      const watchPageBackground = () => {
+        reportPageBackground();
+        if (typeof MutationObserver !== "undefined") {
+          // Palettes and custom themes land as class, data-theme, or style on the roots.
+          const observer = new MutationObserver(schedulePageBackground);
+          const options = { attributes: true, attributeFilter: ["class", "style", "data-theme"] };
+          observer.observe(document.documentElement, options);
+          if (document.body) observer.observe(document.body, options);
+        }
+        document.addEventListener("transitionend", schedulePageBackground, true);
+        window.addEventListener("load", schedulePageBackground, { once: true });
+        matchMedia("(prefers-color-scheme: dark)")
+          .addEventListener("change", schedulePageBackground);
+      };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", watchPageBackground, { once: true });
+      } else {
+        watchPageBackground();
+      }
     })();
     """
   }
@@ -1273,6 +1329,13 @@ struct OmnigentWebView: UIViewRepresentable {
         (webView as? AccessoryFreeWebView)?.emitKeyboardViewport(force: true)
         return
       }
+      // Sent at document load, before the app mounts, so it can't stand down the watchdog.
+      if method == "setPageBackground" {
+        if let color = ThemeController.pageBackground(from: body) {
+          ThemeController.shared.setPageBackground(color)
+        }
+        return
+      }
       // Any trusted message proves the page is alive and driving the bridge, so
       // stand down the liveness watchdog — the page owns the switcher from here.
       parent.model.cancelServerSwitcherWatchdog()
@@ -1927,22 +1990,43 @@ final class ThemeController: ObservableObject {
   static let shared = ThemeController()
 
   @Published private(set) var source: ThemeSource = .system
+  /// The loaded page's background; nil falls back to the design tokens.
+  @Published private(set) var pageBackground: UIColor?
 
   private init() {}
+
+  /// Native backdrop behind the WebView: the page's color once known.
+  var background: UIColor { pageBackground ?? DesignTokens.nativeBackground }
 
   func apply(_ source: ThemeSource) {
     self.source = source
     for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
       for window in scene.windows {
-        Self.apply(source, to: window)
+        Self.apply(source, background: background, to: window)
       }
     }
   }
 
-  static func apply(_ source: ThemeSource, to window: UIWindow) {
+  func setPageBackground(_ color: UIColor?) {
+    guard color != pageBackground else { return }
+    pageBackground = color
+    apply(source)
+  }
+
+  static func apply(
+    _ source: ThemeSource, background: UIColor = DesignTokens.nativeBackground, to window: UIWindow
+  ) {
     window.overrideUserInterfaceStyle = source.userInterfaceStyle
     guard window.windowLevel == .normal else { return }
-    window.backgroundColor = DesignTokens.nativeBackground
-    window.rootViewController?.view.backgroundColor = DesignTokens.nativeBackground
+    window.backgroundColor = background
+    window.rootViewController?.view.backgroundColor = background
+  }
+
+  /// Reads a `setPageBackground` bridge payload of 0–255 sRGB channels.
+  static func pageBackground(from body: [String: Any]) -> UIColor? {
+    let channels = ["red", "green", "blue"].compactMap { (body[$0] as? NSNumber)?.doubleValue }
+    guard channels.count == 3, channels.allSatisfy({ (0...255).contains($0) }) else { return nil }
+    return UIColor(
+      red: channels[0] / 255, green: channels[1] / 255, blue: channels[2] / 255, alpha: 1)
   }
 }
