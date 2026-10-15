@@ -1,8 +1,8 @@
 require "fileutils"
-require "json"
 require "net/http"
 require "socket"
 require "tmpdir"
+require File.expand_path("simulator", __dir__)
 
 def omnigent_available_port
   loop do
@@ -62,15 +62,11 @@ rescue Errno::ESRCH
   nil
 end
 
-# Booted iPhone first, else the first iPhone on the newest iOS runtime.
 def omnigent_default_simulator
   output = `xcrun simctl list devices available --json`
   UI.user_error!("xcrun simctl failed; open Xcode once to install its simulator components") unless $?.success?
 
-  runtimes = JSON.parse(output).fetch("devices").select { |runtime, _| runtime.include?(".SimRuntime.iOS-") }
-  runtimes = runtimes.sort_by { |runtime, _| runtime[/iOS-([\d-]+)\z/, 1].to_s.split("-").map(&:to_i) }.reverse
-  iphones = runtimes.flat_map { |_, devices| devices.select { |device| device["name"].start_with?("iPhone") } }
-  simulator = iphones.find { |device| device["state"] == "Booted" } || iphones.first
+  simulator = OmnigentSimulator.default_iphone(output)
   UI.user_error!("No iPhone simulator available; install one with: xcodebuild -downloadPlatform iOS") unless simulator
   simulator
 end
@@ -120,7 +116,7 @@ platform :ios do
 
   desc "Build and run the Omnigent app in the iOS Simulator"
   lane :simulator do |options|
-    name = [options[:device], ENV["OMNIGENT_IOS_SIMULATOR"]].map(&:to_s).map(&:strip).find { |value| !value.empty? }
+    name = OmnigentSimulator.requested_name(options[:device], ENV["OMNIGENT_IOS_SIMULATOR"])
     if name
       device = name
       destination = "name=#{name}"
