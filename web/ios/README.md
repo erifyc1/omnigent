@@ -9,6 +9,54 @@ copy of the SPA.
 Open `Omnigent.xcodeproj` in Xcode 26 or newer and run the `Omnigent` scheme on
 an iOS 26 iPhone or iPad simulator.
 
+### Mac setup for `just run-ios`
+
+`just run-ios` builds with fastlane and launches the app in a simulator. It
+needs:
+
+1. **Full Xcode**, not only the Command Line Tools. Install it, then:
+
+   ```sh
+   sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+   sudo xcodebuild -license accept
+   sudo xcodebuild -runFirstLaunch   # installs CoreSimulator
+   xcodebuild -downloadPlatform iOS  # installs the iOS simulator runtime
+   ```
+
+2. **Ruby 3 or newer.** The macOS system Ruby (2.6) is too old for the
+   `Gemfile.lock` gems. With Homebrew, from `web/ios`:
+
+   ```sh
+   brew install ruby
+   export PATH="$(brew --prefix ruby)/bin:$PATH"
+   export PATH="$(ruby -e 'print Gem.bindir'):$PATH"  # add both lines to ~/.zshrc
+   gem install bundler -v "$(tail -1 Gemfile.lock | tr -d ' ')"
+   ```
+
+   If `bundle install` fails with `Permission denied` in the shared gem
+   directory, install into this folder instead (it is gitignored):
+   `bundle config set --local path vendor/bundle`.
+
+The recipe uses a booted iPhone simulator, else the first iPhone on the newest
+installed iOS runtime. To choose one, set `OMNIGENT_IOS_SIMULATOR` to a name
+from `xcrun simctl list devices available`. Run the picker's tests with
+`ruby web/ios/fastlane/test/simulator_test.rb`.
+
+### Using the simulator
+
+- **No window:** `just run-ios` boots the simulator headless. Open Device Hub
+  (Xcode 27, `/Applications/Xcode.app/Contents/Applications/DeviceHub.app`) or
+  Simulator (Xcode 26), or run the scheme from Xcode with ⌘R instead.
+- **Keyboard:** typing goes to the Mac keyboard by default. In Xcode 27, uncheck
+  **Device → Keyboard → Simulate Hardware Keyboard**, or toggle the on-screen
+  keyboard with ⌥⌘K. In Xcode 26 it's **I/O → Keyboard** and ⌘K.
+- **Keychain:** `just run-ios` builds unsigned, so saved credentials fail
+  ("Could not access saved Databricks credentials"). Run from Xcode for
+  sign-in flows, or connect to a local `omnigent server` at
+  `http://127.0.0.1:6767`.
+- **Physical device:** `localhost` is the phone itself. Start the server with
+  `--host 0.0.0.0` and connect to the Mac's LAN address.
+
 Debug builds allow `http://` web content for local development by enabling
 `NSAllowsArbitraryLoadsInWebContent`. Release builds keep App Transport
 Security defaults and require remote servers to use `https://`.
