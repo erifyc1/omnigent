@@ -108,7 +108,7 @@ struct WebShellView: View {
       }
       .animation(.easeInOut(duration: 0.16), value: model.serverSwitcherHidden)
       .ignoresSafeArea(.keyboard)
-      .background(DesignTokens.background(colorScheme).ignoresSafeArea())
+      .background(Color(uiColor: DesignTokens.nativeBackground).ignoresSafeArea())
       .overlay(alignment: .bottom) {
         // Always present, shown/hidden by opacity rather than insert/remove, so
         // a transient visibility flip never slides the bar in and out. The web

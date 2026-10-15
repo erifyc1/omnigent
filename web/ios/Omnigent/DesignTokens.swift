@@ -14,9 +14,8 @@ enum DesignTokens {
   static let darkMutedForeground = Color(red: 0.572, green: 0.643, blue: 0.702)
   static let darkBorder = Color(red: 0.215, green: 0.219, blue: 0.230)
 
-  static let nativeBackground = UIColor { traits in
-    UIColor(background(traits.userInterfaceStyle == .dark ? .dark : .light))
-  }
+  // DIAGNOSTIC ONLY: shows where the native backdrop is visible. Do not merge.
+  static let nativeBackground = UIColor.systemRed
 
   static func background(_ scheme: ColorScheme) -> Color {
     scheme == .dark ? darkBackground : lightBackground
